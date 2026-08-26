@@ -2,7 +2,7 @@
 
 The Direct Preference Optimization (DPO) loss compares how strongly a trainable model prefers a **chosen response** over a **rejected response**, relative to the same preference under a frozen reference model:
 
-$$
+```math
 \mathcal{L}_{\mathrm{DPO}}(\theta)
 =
 -\mathbb{E}_{(x,y^+,y^-)}
@@ -17,7 +17,7 @@ $$
 \right]
 \right)
 \right]
-$$
+```
 
 ## Inputs
 
@@ -39,9 +39,9 @@ y- = "Photosynthesis is how animals digest food."
 
 Qwen2.5 is a causal Transformer language model. Given a token sequence, its final hidden states pass through a language-model output head:
 
-$$
+```math
 \mathbf{z}_t = W_{\mathrm{LM}}\mathbf{h}_t
-$$
+```
 
 where:
 
@@ -51,29 +51,29 @@ where:
 
 A softmax converts those logits into next-token probabilities:
 
-$$
-P_\theta(w_t\mid w_{<t})
+```math
+P_\theta(w_t\mid w_1,\ldots,w_{t-1})
 =
-\operatorname{softmax}(\mathbf{z}_{t-1})_{w_t}
-$$
+\mathrm{softmax}(\mathbf{z}_{t-1})_{w_t}
+```
 
 Qwen generates a response autoregressively, so the probability of an entire response is the product of its token probabilities:
 
-$$
+```math
 \pi_\theta(y\mid x)
 =
 \prod_{t=1}^{T}
-P_\theta(y_t\mid x,y_{<t})
-$$
+P_\theta(y_t\mid x,y_1,\ldots,y_{t-1})
+```
 
 In practice, DPO uses log probabilities, turning the product into a numerically stable sum:
 
-$$
+```math
 \log \pi_\theta(y\mid x)
 =
 \sum_{t=1}^{T}
-\log P_\theta(y_t\mid x,y_{<t})
-$$
+\log P_\theta(y_t\mid x,y_1,\ldots,y_{t-1})
+```
 
 Only response tokens are normally included. Prompt and padding positions are masked out.
 
@@ -81,29 +81,29 @@ Only response tokens are normally included. Prompt and padding positions are mas
 
 ### Trainable Policy
 
-$$
+```math
 \pi_\theta(y\mid x)
-$$
+```
 
 This is the Qwen2.5 model being fine-tuned. Its parameters $\theta$ receive gradients and change during training.
 
 For the chosen response:
 
-$$
+```math
 \log\pi_\theta(y^+\mid x)
-$$
+```
 
 For the rejected response:
 
-$$
+```math
 \log\pi_\theta(y^-\mid x)
-$$
+```
 
 ### Reference Policy
 
-$$
+```math
 \pi_{\mathrm{ref}}(y\mid x)
-$$
+```
 
 This is normally a frozen copy of the original pretrained or supervised-fine-tuned Qwen model. Its parameters are not updated.
 
@@ -113,7 +113,7 @@ It acts as an anchor, preventing the policy from moving too far from the behavio
 
 For the chosen response:
 
-$$
+```math
 r^+
 =
 \log\frac{\pi_\theta(y^+\mid x)}
@@ -122,24 +122,24 @@ r^+
 \log\pi_\theta(y^+\mid x)
 -
 \log\pi_{\mathrm{ref}}(y^+\mid x)
-$$
+```
 
 This measures how much more or less likely the trainable Qwen model makes the chosen response compared with the reference model.
 
 Similarly:
 
-$$
+```math
 r^-
 =
 \log\frac{\pi_\theta(y^-\mid x)}
 {\pi_{\mathrm{ref}}(y^-\mid x)}
-$$
+```
 
 The central DPO score is:
 
-$$
+```math
 \Delta = r^+ - r^-
-$$
+```
 
 Interpretation:
 
@@ -149,7 +149,7 @@ Interpretation:
 
 An equivalent expanded form is:
 
-$$
+```math
 \Delta
 =
 \underbrace{
@@ -165,7 +165,7 @@ $$
 -
 \log\pi_{\mathrm{ref}}(y^-\mid x)
 \right]}_{\text{reference preference}}
-$$
+```
 
 DPO therefore trains Qwen to prefer $y^+$ over $y^-$ **more strongly than the reference model does**.
 
@@ -173,23 +173,23 @@ DPO therefore trains Qwen to prefer $y^+$ over $y^-$ **more strongly than the re
 
 $\beta$ controls the strength of the comparison:
 
-$$
+```math
 s = \beta\Delta
-$$
+```
 
 A larger $\beta$ makes the loss more sensitive to preference differences. It also corresponds to stronger pressure to stay near the reference policy in the reward-model interpretation of DPO.
 
 The sigmoid converts the score into a value between zero and one:
 
-$$
+```math
 \sigma(s)=\frac{1}{1+e^{-s}}
-$$
+```
 
 It can be interpreted as the predicted probability that $y^+$ should be preferred over $y^-$. Finally,
 
-$$
+```math
 -\log\sigma(s)
-$$
+```
 
 is a binary logistic loss:
 
