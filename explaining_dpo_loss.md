@@ -52,9 +52,9 @@ where:
 A softmax converts those logits into next-token probabilities:
 
 ```math
-P_\theta(w_t\mid w_{<t})
+P_\theta(w_t\mid w_1,\ldots,w_{t-1})
 =
-\operatorname{softmax}(\mathbf{z}_{t-1})_{w_t}
+\mathrm{softmax}(\mathbf{z}_{t-1})_{w_t}
 ```
 
 Qwen generates a response autoregressively, so the probability of an entire response is the product of its token probabilities:
@@ -63,7 +63,7 @@ Qwen generates a response autoregressively, so the probability of an entire resp
 \pi_\theta(y\mid x)
 =
 \prod_{t=1}^{T}
-P_\theta(y_t\mid x,y_{<t})
+P_\theta(y_t\mid x,y_1,\ldots,y_{t-1})
 ```
 
 In practice, DPO uses log probabilities, turning the product into a numerically stable sum:
@@ -72,7 +72,7 @@ In practice, DPO uses log probabilities, turning the product into a numerically 
 \log \pi_\theta(y\mid x)
 =
 \sum_{t=1}^{T}
-\log P_\theta(y_t\mid x,y_{<t})
+\log P_\theta(y_t\mid x,y_1,\ldots,y_{t-1})
 ```
 
 Only response tokens are normally included. Prompt and padding positions are masked out.
