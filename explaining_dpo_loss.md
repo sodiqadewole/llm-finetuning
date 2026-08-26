@@ -17,7 +17,6 @@ The Direct Preference Optimization (DPO) loss compares how strongly a trainable 
 \right]
 \right)
 \right]
-	ag{1}
 ```
 
 ## Inputs
@@ -42,7 +41,6 @@ Qwen2.5 is a causal Transformer language model. Given a token sequence, its fina
 
 ```math
 \mathbf{z}_t = W_{\mathrm{LM}}\mathbf{h}_t
-	ag{2}
 ```
 
 where:
@@ -57,7 +55,6 @@ A softmax converts those logits into next-token probabilities:
 P_\theta(w_t\mid w_{<t})
 =
 \operatorname{softmax}(\mathbf{z}_{t-1})_{w_t}
-	ag{3}
 ```
 
 Qwen generates a response autoregressively, so the probability of an entire response is the product of its token probabilities:
@@ -67,7 +64,6 @@ Qwen generates a response autoregressively, so the probability of an entire resp
 =
 \prod_{t=1}^{T}
 P_\theta(y_t\mid x,y_{<t})
-	ag{4}
 ```
 
 In practice, DPO uses log probabilities, turning the product into a numerically stable sum:
@@ -77,7 +73,6 @@ In practice, DPO uses log probabilities, turning the product into a numerically 
 =
 \sum_{t=1}^{T}
 \log P_\theta(y_t\mid x,y_{<t})
-	ag{5}
 ```
 
 Only response tokens are normally included. Prompt and padding positions are masked out.
@@ -88,7 +83,6 @@ Only response tokens are normally included. Prompt and padding positions are mas
 
 ```math
 \pi_\theta(y\mid x)
-	ag{6}
 ```
 
 This is the Qwen2.5 model being fine-tuned. Its parameters $\theta$ receive gradients and change during training.
@@ -97,21 +91,18 @@ For the chosen response:
 
 ```math
 \log\pi_\theta(y^+\mid x)
-	ag{7}
 ```
 
 For the rejected response:
 
 ```math
 \log\pi_\theta(y^-\mid x)
-	ag{8}
 ```
 
 ### Reference Policy
 
 ```math
 \pi_{\mathrm{ref}}(y\mid x)
-	ag{9}
 ```
 
 This is normally a frozen copy of the original pretrained or supervised-fine-tuned Qwen model. Its parameters are not updated.
@@ -131,7 +122,6 @@ r^+
 \log\pi_\theta(y^+\mid x)
 -
 \log\pi_{\mathrm{ref}}(y^+\mid x)
-	ag{10}
 ```
 
 This measures how much more or less likely the trainable Qwen model makes the chosen response compared with the reference model.
@@ -143,14 +133,12 @@ r^-
 =
 \log\frac{\pi_\theta(y^-\mid x)}
 {\pi_{\mathrm{ref}}(y^-\mid x)}
-	ag{11}
 ```
 
 The central DPO score is:
 
 ```math
 \Delta = r^+ - r^-
-	ag{12}
 ```
 
 Interpretation:
@@ -177,7 +165,6 @@ An equivalent expanded form is:
 -
 \log\pi_{\mathrm{ref}}(y^-\mid x)
 \right]}_{\text{reference preference}}
-	ag{13}
 ```
 
 DPO therefore trains Qwen to prefer $y^+$ over $y^-$ **more strongly than the reference model does**.
@@ -188,7 +175,6 @@ $\beta$ controls the strength of the comparison:
 
 ```math
 s = \beta\Delta
-	ag{14}
 ```
 
 A larger $\beta$ makes the loss more sensitive to preference differences. It also corresponds to stronger pressure to stay near the reference policy in the reward-model interpretation of DPO.
@@ -197,14 +183,12 @@ The sigmoid converts the score into a value between zero and one:
 
 ```math
 \sigma(s)=\frac{1}{1+e^{-s}}
-	ag{15}
 ```
 
 It can be interpreted as the predicted probability that $y^+$ should be preferred over $y^-$. Finally,
 
 ```math
 -\log\sigma(s)
-	ag{16}
 ```
 
 is a binary logistic loss:
