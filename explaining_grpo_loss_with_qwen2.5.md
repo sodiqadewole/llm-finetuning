@@ -432,7 +432,86 @@ With $\varepsilon=0.2$, the ratio is inside $[0.8,1.2]$, so clipping does nothin
 
 For a below-average completion with $\hat A_i=-1$, the direction reverses: minimizing the loss lowers the probability of its sampled tokens. The reward does not identify one individually incorrect token; it assigns credit or blame to all generated tokens through the shared sequence advantage.
 
-## 9. End-to-End Training Flow
+## 9. Simple PyTorch Implementation
+
+This implementation shows classic clipped GRPO for one group. The tensors have shape `(G, T)`, where `G` is the number of completions and `T` is the padded completion length.
+
+```python
+import torch
+
+
+def grpo_loss(
+    current_logps,
+    old_logps,
+    rewards,
+    completion_mask,
+    reference_logps=None,
+    epsilon=0.2,
+    beta=0.0,
+):
+    # Normalize rewards within the group to obtain one advantage per completion.
+    advantages = (rewards - rewards.mean()) / (
+        rewards.std(unbiased=False) + 1e-4
+    )
+
+    # One current-to-rollout importance ratio per completion token.
+    ratios = torch.exp(current_logps - old_logps)
+    clipped_ratios = ratios.clamp(1 - epsilon, 1 + epsilon)
+
+    token_advantages = advantages.unsqueeze(1)
+    policy_objective = torch.minimum(
+        ratios * token_advantages,
+        clipped_ratios * token_advantages,
+    )
+
+    # Minimized loss is negative policy objective plus optional KL penalty.
+    per_token_loss = -policy_objective
+    if reference_logps is not None and beta != 0.0:
+        log_ratio_ref = reference_logps - current_logps
+        sampled_kl = torch.exp(log_ratio_ref) - log_ratio_ref - 1
+        per_token_loss = per_token_loss + beta * sampled_kl
+
+    # Average valid tokens within each completion, then average completions.
+    lengths = completion_mask.sum(dim=1).clamp(min=1)
+    loss_per_completion = (per_token_loss * completion_mask).sum(dim=1) / lengths
+    return loss_per_completion.mean(), advantages, ratios
+```
+
+Here is a small calculation with four two-token completions:
+
+```python
+old_logps = torch.log(torch.tensor([
+    [0.20, 0.30],
+    [0.25, 0.20],
+    [0.40, 0.10],
+    [0.30, 0.20],
+]))
+current_logps = torch.log(torch.tensor([
+    [0.22, 0.33],
+    [0.26, 0.21],
+    [0.36, 0.09],
+    [0.27, 0.18],
+], requires_grad=True))
+rewards = torch.tensor([1.0, 1.0, 0.0, 0.0])
+mask = torch.ones_like(current_logps)
+
+loss, advantages, ratios = grpo_loss(
+    current_logps=current_logps,
+    old_logps=old_logps,
+    rewards=rewards,
+    completion_mask=mask,
+    epsilon=0.2,
+)
+
+print("advantages:", advantages)  # approximately [1, 1, -1, -1]
+print("first token ratio:", ratios[0, 0].item())  # 0.22 / 0.20 = 1.10
+print("loss:", loss.item())
+loss.backward()
+```
+
+In a real Qwen run, `current_logps` are gathered from the current model's `log_softmax` output, while `old_logps` are detached values saved when the completions were generated. Padding and tokens after EOS have a zero mask.
+
+## 10. End-to-End Training Flow
 
 For each optimizer cycle, GRPO performs the following:
 
@@ -466,7 +545,7 @@ q
 \nabla_\theta\mathcal{L}.
 ```
 
-## 10. Relation to the Notebook
+## 11. Relation to the Notebook
 
 The notebook constructs
 
@@ -502,7 +581,7 @@ args = GRPOConfig(
 )
 ```
 
-## 11. What Comes from Qwen and What Comes from GRPO
+## 12. What Comes from Qwen and What Comes from GRPO
 
 | Component | Qwen2.5 architecture | GRPO trainer |
 |---|---:|---:|

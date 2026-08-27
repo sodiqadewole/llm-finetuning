@@ -198,6 +198,66 @@ is a binary logistic loss:
 - If Qwen strongly favors $y^+$, then $s$ is positive, $\sigma(s)$ approaches $1$, and the loss approaches $0$.
 - If Qwen favors $y^-$, then $s$ is negative, $\sigma(s)$ approaches $0$, and the loss becomes large.
 
+## Simple PyTorch Implementation
+
+The following helper converts Qwen vocabulary logits into one log probability per response. `response_mask` is `1` for response tokens and `0` for prompt or padding tokens.
+
+```python
+import torch
+import torch.nn.functional as F
+
+
+def sequence_log_probs(logits, token_ids, response_mask):
+	"""Sum log probabilities of the actual response tokens."""
+	token_log_probs = F.log_softmax(logits, dim=-1)
+	selected_log_probs = token_log_probs.gather(
+		dim=-1, index=token_ids.unsqueeze(-1)
+	).squeeze(-1)
+	return (selected_log_probs * response_mask).sum(dim=-1)
+
+
+def dpo_loss(
+	policy_chosen_logps,
+	policy_rejected_logps,
+	reference_chosen_logps,
+	reference_rejected_logps,
+	beta=0.1,
+):
+	policy_preference = policy_chosen_logps - policy_rejected_logps
+	reference_preference = reference_chosen_logps - reference_rejected_logps
+	preference_improvement = policy_preference - reference_preference
+	losses = -F.logsigmoid(beta * preference_improvement)
+	return losses.mean(), preference_improvement
+```
+
+A small sequence-level example is:
+
+```python
+policy_chosen = torch.tensor([-4.0], requires_grad=True)
+policy_rejected = torch.tensor([-6.0], requires_grad=True)
+reference_chosen = torch.tensor([-4.5])
+reference_rejected = torch.tensor([-5.5])
+
+loss, improvement = dpo_loss(
+	policy_chosen,
+	policy_rejected,
+	reference_chosen,
+	reference_rejected,
+	beta=0.1,
+)
+
+print("policy preference:", (policy_chosen - policy_rejected).item())  # 2.0
+print("reference preference:", (reference_chosen - reference_rejected).item())  # 1.0
+print("preference improvement:", improvement.item())  # 1.0
+print("loss:", loss.item())  # approximately 0.6444
+
+loss.backward()
+print("chosen gradient:", policy_chosen.grad.item())   # negative: increase chosen log-probability
+print("rejected gradient:", policy_rejected.grad.item())  # positive: decrease rejected log-probability
+```
+
+In actual training, the four sequence log probabilities are produced by `sequence_log_probs` from policy and frozen-reference Qwen forward passes. The reference tensors are computed under `torch.no_grad()`.
+
 ## Training Flow
 
 For every preference pair, DPO:

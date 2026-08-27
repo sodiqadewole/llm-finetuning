@@ -557,7 +557,75 @@ v_U
 
 Gradient descent lowers its policy-relative sequence score further.
 
-## 11. End-to-End Training Flow
+## 11. Simple PyTorch Implementation
+
+The function below expects one policy and reference sequence log probability per example, a Boolean desirability label, and the detached KL reference point used by KTO.
+
+```python
+import torch
+import torch.nn.functional as F
+
+
+def sequence_log_probs(logits, token_ids, completion_mask):
+    """Convert vocabulary logits to masked completion log probabilities."""
+    all_logps = F.log_softmax(logits, dim=-1)
+    token_logps = all_logps.gather(
+        dim=-1, index=token_ids.unsqueeze(-1)
+    ).squeeze(-1)
+    return (token_logps * completion_mask).sum(dim=-1)
+
+
+def kto_loss(
+    policy_logps,
+    reference_logps,
+    desirable,
+    kl_reference_point,
+    beta=0.1,
+    desirable_weight=1.0,
+    undesirable_weight=1.0,
+):
+    log_ratios = policy_logps - reference_logps
+    kl = kl_reference_point.detach()
+
+    desirable_losses = 1 - torch.sigmoid(beta * (log_ratios - kl))
+    undesirable_losses = 1 - torch.sigmoid(beta * (kl - log_ratios))
+
+    losses = torch.where(
+        desirable,
+        desirable_weight * desirable_losses,
+        undesirable_weight * undesirable_losses,
+    )
+    return losses.mean(), log_ratios
+```
+
+A minimal batch containing one desirable and one undesirable example is:
+
+```python
+policy_logps = torch.tensor([-8.0, -11.0], requires_grad=True)
+reference_logps = torch.tensor([-10.0, -10.0])
+labels = torch.tensor([True, False])
+kl_reference_point = torch.tensor(0.4)
+
+loss, log_ratios = kto_loss(
+    policy_logps,
+    reference_logps,
+    labels,
+    kl_reference_point,
+    beta=0.1,
+)
+
+print("log ratios:", log_ratios)  # [2.0, -1.0]
+print("per-batch loss:", loss.item())  # approximately (0.460 + 0.465) / 2
+
+loss.backward()
+print("gradients:", policy_logps.grad)
+# Desirable gradient is negative, so its log-probability increases.
+# Undesirable gradient is positive, so its log-probability decreases.
+```
+
+TRL estimates `kl_reference_point` from mismatched prompt-completion pairs in the batch. The example supplies it directly so the label-dependent KTO calculation remains easy to see.
+
+## 12. End-to-End Training Flow
 
 For a batch of labeled examples, `KTOTrainer` performs the following:
 
@@ -590,7 +658,7 @@ v_\theta
 \nabla_\theta\mathcal{L}.
 ```
 
-## 12. Relation to the Notebook
+## 13. Relation to the Notebook
 
 The notebook creates
 
@@ -639,7 +707,7 @@ training_args = KTOConfig(
 )
 ```
 
-## 13. What Comes from Qwen and What Comes from KTO
+## 14. What Comes from Qwen and What Comes from KTO
 
 | Component | Qwen architecture | KTO trainer |
 |---|---:|---:|
